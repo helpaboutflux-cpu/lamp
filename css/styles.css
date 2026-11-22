@@ -559,7 +559,7 @@ code, pre, kbd { font-family: var(--mono); }
 .editor__gutter {
   font-family: var(--mono); font-size: 12px; line-height: 20px; padding: 12px 8px 12px 0;
   text-align: right; color: var(--ink-3); background: var(--surface-2); border-right: 1px solid var(--line);
-  overflow: hidden; user-select: none;
+  overflow: hidden; user-select: none; white-space: pre; tab-size: 2;
 }
 .editor__pane { position: relative; min-height: 430px; overflow: hidden; }
 .editor__hl, .editor__area {
@@ -715,6 +715,7 @@ code, pre, kbd { font-family: var(--mono); }
 }
 
 @media (max-width: 620px) {
+  .hint-row { flex-direction: column; align-items: flex-start; }
   .card__head { padding: 15px 15px 0; }
   .card__body { padding: 13px 15px 16px; }
   .card--pad { padding: 15px; }
@@ -724,6 +725,9 @@ code, pre, kbd { font-family: var(--mono); }
   .stat__num { font-size: 26px; }
   .topbar__actions .btn span { display: none; }
   .topbar__actions .btn { padding: 0 10px; }
+  .topbar__actions .btn--brand { padding: 0 12px; }
+  .topbar__actions .btn--brand span { display: inline; }
+  .card .row.wrap-sm { flex-wrap: wrap; }
   .hide-sm { display: none; }
 }
 

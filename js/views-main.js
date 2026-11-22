@@ -383,7 +383,10 @@ export async function dashboardView() {
             <div class="stat__num">${fmtNum(totalViews.week)}</div>
             <div class="small dim">${totalViews.live ? `최근 3시간 ${fmtNum(totalViews.live)}회` : '페이지 조회 기준'}</div>
           </div>
-          ${areaChart(totalViews.points, { labelEvery: 2 })}
+          ${totalViews.week ? areaChart(totalViews.points, { labelEvery: 2 }) : `<div class="empty" style="padding:20px 8px 0">
+            <div class="empty__ico">${icon('chart', 20)}</div>
+            <p style="margin:0">사이트를 공유하면 방문 수가 여기에 쌓입니다.</p>
+          </div>`}
         </div>
       </div>
     </div>
@@ -407,12 +410,12 @@ export async function dashboardView() {
     </div>
 
     ${sites.length < 2 ? `<div class="card mt-16 card--pad">
-      <div class="row" style="gap:14px;align-items:flex-start">
+      <div class="row hint-row" style="gap:14px;align-items:flex-start">
         <div class="feature__ico">${icon('spark', 18)}</div>
-        <div style="flex:1"><b>다음에 해 보면 좋은 것</b>
+        <div style="flex:1;min-width:180px"><b>다음에 해 보면 좋은 것</b>
           <div class="small muted mt-8">템플릿으로 두 번째 사이트를 만들고, IDE에서 문구를 바꿔 보세요. 생성기로 개인정보 처리방침도 바로 붙일 수 있습니다.</div>
         </div>
-        <div class="row row--tight"><a class="btn btn--sm" href="#/tools">도구·생성기</a><a class="btn btn--sm" href="#/docs">문서</a></div>
+        <div class="row row--tight" style="flex:none"><a class="btn btn--sm" href="#/tools">도구·생성기</a><a class="btn btn--sm" href="#/docs">문서</a></div>
       </div>
     </div>` : ''}`,
     async mount(root) {

@@ -4,8 +4,10 @@
 정적 사이트가 만들어지고, 버전 되돌리기·내장 편집기·SEO 진단·폼 수집·방문자 분석·문서 생성기를
 한 화면에서 씁니다.
 
-- 대시보드(이 저장소, GitHub Pages): https://helpaboutflux-cpu.github.io/lamp/
-- 배포 엔진(Cloudflare Worker): https://lamp-edge.helpaboutflux.workers.dev
+- **앱 주소(라이브)**: https://lamp-edge.helpaboutflux.workers.dev — 이 워커가 대시보드와 호스팅을 함께 제공합니다.
+- 저장소: https://github.com/helpaboutflux-cpu/lamp
+  (GitHub Pages로도 띄울 수 있게 구성돼 있습니다. 저장소 Settings → Pages → Deploy from a branch: `main` / `(root)` 를 켜면 `https://helpaboutflux-cpu.github.io/lamp/` 로 열립니다. App 권한에 Pages 설정 권한이 없어 자동 활성화는 하지 못했습니다.)
+- Cloudflare Pages 업로드 스크립트도 들어 있습니다(`worker/deploy_pages.py`). 이 계정에서는 아직 서브도메인이 500을 반환해 워커 호스팅을 기본으로 씁니다.
 - 로그인: Supabase Auth (`foisgisqbyaykrlddvio`)
 
 ## 구성
@@ -82,6 +84,14 @@ python3 deploy_worker.py --token "$CF_API_TOKEN" --account "$CF_ACCOUNT_ID" \
 
 서비스(secret) 키는 **워커에 넣지 않습니다.** 워커는 사용자 액세스 토큰을 Supabase
 `/auth/v1/user` 로 검증하기만 하고, 시크릿 키는 프론트엔드에도 워커에도 저장하지 않습니다.
+
+### 대시보드 올리기 (엔진이 직접 서빙)
+
+```bash
+python3 worker/upload_dashboard.py --token "$CF_API_TOKEN" --account "$CF_ACCOUNT_ID" --kv "$LAMP_KV_ID"
+```
+
+정적 파일 전체를 KV 키 하나(`dash:files`)에 담아 **쓰기 1회**로 올립니다. 워커는 60초 캐시 후 새 번들을 읽습니다.
 
 ### KV 연산 절약
 

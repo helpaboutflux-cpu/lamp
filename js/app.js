@@ -138,6 +138,20 @@ document.addEventListener('click', (e) => {
     go(el.dataset.path);
   }
   if (act === 'go-account') go('/settings');
+  if (act === 'quick-deploy') {
+    if (state.sites.length) {
+      go('/site/' + encodeURIComponent(state.sites[0].slug) + '/deploy');
+    } else {
+      const form = document.querySelector('[data-new-site]');
+      const wrap = document.querySelector('[data-deploy-wrap]');
+      if (form) {
+        form.hidden = false;
+        if (wrap) wrap.hidden = true;
+        const name = form.querySelector('[data-ns-name]');
+        if (name) name.focus();
+      }
+    }
+  }
   if (act === 'retry') rerender();
 });
 

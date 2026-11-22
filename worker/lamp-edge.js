@@ -18,7 +18,10 @@ const LIMITS = {
   bundleMax: 2 * 1024 * 1024
 };
 
-const RESERVED = new Set(['api', 'p', 'f', '__lamp', 'favicon.ico', 'robots.txt', 'sitemap.xml']);
+const RESERVED = new Set(['api', 'p', 'f', '__lamp', 'js', 'css', 'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml']);
+const DASH_PREFIXES = ['js/', 'css/', 'assets/'];
+let dashCache = null;
+let dashCacheAt = 0;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 const MIME = {
@@ -385,7 +388,7 @@ async function rateLimit(env, uid, kind, max, windowSec) {
 /* 방문자 집계 (메모리 버퍼 → 시간당 1회 기록)                          */
 /* ------------------------------------------------------------------ */
 
-const hitBuffer = new Map(); // "an:slug:h:YYYY-MM-DDTHH" -> count
+const hitBuffer = new Map(); // "slug|kind|bucket[|variant]" -> 증분
 let lastFlush = Date.now();
 const FLUSH_AFTER_MS = 55 * 60 * 1000;
 
@@ -395,29 +398,61 @@ function isBot(req) {
   return BOT_UA.test(ua);
 }
 
+function bump(key, n = 1) {
+  hitBuffer.set(key, (hitBuffer.get(key) || 0) + n);
+}
+
+/** 메모리에 모은 방문 수를 사이트별 값 하나(an:<slug>)에 합쳐 쓴다. 사이트당 flush 1회 = 쓰기 1회. */
 async function flushHits(env) {
   const entries = [...hitBuffer.entries()];
   hitBuffer.clear();
   lastFlush = Date.now();
+  const bySite = new Map();
   for (const [key, n] of entries) {
+    const [slug] = key.split('|');
+    if (!bySite.has(slug)) bySite.set(slug, []);
+    bySite.get(slug).push([key, n]);
+  }
+  for (const [slug, list] of bySite) {
     try {
-      const prev = parseInt((await env.LAMP_KV.get(key)) || '0', 10);
-      await env.LAMP_KV.put(key, String(prev + n), { expirationTtl: 60 * 60 * 24 * 21 });
-    } catch (e) { /* 집계 실패는 무시 */ }
+      const key = 'an:' + slug;
+      const cur = (await env.LAMP_KV.get(key, 'json')) || { d: {}, h: {}, ab: {}, t: 0 };
+      for (const [raw, n] of list) {
+        const parts = raw.split('|');
+        const kind = parts[1];
+        const bucket = parts[2];
+        if (kind === 'h') {
+          cur.h[bucket] = (cur.h[bucket] || 0) + n;
+        } else if (kind === 'd') {
+          cur.d[bucket] = (cur.d[bucket] || 0) + n;
+        } else if (kind === 'v') {
+          const variant = parts[3];
+          cur.ab[bucket] = cur.ab[bucket] || {};
+          cur.ab[bucket][variant] = (cur.ab[bucket][variant] || 0) + n;
+        }
+        cur.t = (cur.t || 0) + n;
+      }
+      const dayCut = dayKey(new Date(Date.now() - 45 * 86400000));
+      for (const k of Object.keys(cur.d)) if (k < dayCut) delete cur.d[k];
+      const hourCut = hourKey(new Date(Date.now() - 72 * 3600000));
+      for (const k of Object.keys(cur.h)) if (k < hourCut) delete cur.h[k];
+      const abCut = dayKey(new Date(Date.now() - 30 * 86400000));
+      for (const k of Object.keys(cur.ab)) if (k < abCut) delete cur.ab[k];
+      await env.LAMP_KV.put(key, JSON.stringify(cur));
+    } catch (e) { /* 집계 실패는 요청을 막지 않는다 */ }
   }
 }
 
 function countHit(env, ctx, slug) {
-  const key = 'an:' + slug + ':h:' + hourKey();
-  hitBuffer.set(key, (hitBuffer.get(key) || 0) + 1);
+  bump(slug + '|h|' + hourKey());
+  bump(slug + '|d|' + dayKey());
   if (Date.now() - lastFlush < FLUSH_AFTER_MS) return;
   const task = flushHits(env);
   if (ctx && ctx.waitUntil) ctx.waitUntil(task);
 }
 
 function countVariant(env, ctx, slug, variant) {
-  const key = 'ab:' + slug + ':' + dayKey() + ':' + variant;
-  hitBuffer.set(key, (hitBuffer.get(key) || 0) + 1);
+  bump(slug + '|v|' + dayKey() + '|' + variant);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1029,42 +1064,41 @@ async function handleApi(req, env, ctx, url) {
 
     if (parts[2] === 'analytics' && method === 'GET') {
       const days = Math.min(30, Number(url.searchParams.get('days') || 7));
+      const stored = (await env.LAMP_KV.get('an:' + slug, 'json')) || { d: {}, h: {}, ab: {}, t: 0 };
+      const bufD = {};
+      const bufH = {};
+      const bufV = {};
+      for (const [key, n] of hitBuffer) {
+        const [s2, kind, bucket, variant] = key.split('|');
+        if (s2 !== slug) continue;
+        if (kind === 'd') bufD[bucket] = (bufD[bucket] || 0) + n;
+        if (kind === 'h') bufH[bucket] = (bufH[bucket] || 0) + n;
+        if (kind === 'v') { bufV[bucket] = bufV[bucket] || {}; bufV[bucket][variant] = (bufV[bucket][variant] || 0) + n; }
+      }
+      const daily = [];
+      let total = 0;
+      for (let i = days - 1; i >= 0; i--) {
+        const d = dayKey(new Date(Date.now() - i * 86400000));
+        const v = (stored.d[d] || 0) + (bufD[d] || 0);
+        daily.push({ date: d, views: v });
+        total += v;
+      }
       const hours = [];
-      const now = new Date();
       for (let i = 23; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 3600000);
-        const k = 'an:' + slug + ':h:' + hourKey(d);
-        hours.push({ hour: hourKey(d), views: parseInt((await env.LAMP_KV.get(k)) || '0', 10) });
+        const h = hourKey(new Date(Date.now() - i * 3600000));
+        hours.push({ hour: h, views: (stored.h[h] || 0) + (bufH[h] || 0) });
       }
-      const dailyMap = new Map();
-      for (let i = days * 24 - 1; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 3600000);
-        const day = dayKey(d);
-        if (!dailyMap.has(day)) dailyMap.set(day, 0);
-        if (i < 24) continue;
-        const k = 'an:' + slug + ':h:' + hourKey(d);
-        dailyMap.set(day, dailyMap.get(day) + parseInt((await env.LAMP_KV.get(k)) || '0', 10));
-      }
-      // 오늘은 메모리 버퍼 값도 더한다
-      const todayKey = dayKey();
-      const buf = hitBuffer.get('an:' + slug + ':h:' + hourKey()) || 0;
-      dailyMap.set(todayKey, (dailyMap.get(todayKey) || 0) + buf);
-      hours[hours.length - 1].views += buf;
-      const daily = [...dailyMap.entries()].map(([date, views]) => ({ date, views }));
-
       let ab = [];
       if (site.abtest && site.abtest.variants) {
-        for (const v of site.abtest.variants) {
-          const stored = parseInt((await env.LAMP_KV.get('ab:' + slug + ':' + todayKey + ':' + v.name)) || '0', 10);
-          ab.push({
-            name: v.name,
-            version: v.version,
-            views: stored + (hitBuffer.get('ab:' + slug + ':' + todayKey + ':' + v.name) || 0)
-          });
-        }
+        const today = dayKey();
+        const base = (stored.ab && stored.ab[today]) || {};
+        const extra = bufV[today] || {};
+        ab = site.abtest.variants.map((v) => ({
+          name: v.name, version: v.version,
+          views: (base[v.name] || 0) + (extra[v.name] || 0)
+        }));
       }
-      const total = daily.reduce((n, d) => n + d.views, 0);
-      return json({ ok: true, daily, hours, total, live: hours.slice(-3).reduce((n, h) => n + h.views, 0), ab });
+      return json({ ok: true, daily, hours, total: total || stored.t || 0, live: hours.slice(-3).reduce((n, h) => n + h.views, 0), ab });
     }
 
     if (parts[2] === 'forms') {
@@ -1226,7 +1260,12 @@ export default {
 
     if (url.pathname.startsWith('/api/')) return await handleApi(req, env, ctx, url);
 
-    if (url.pathname === '/' || url.pathname === '') return html(landingPage(env));
+    const dashPath = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\//, '');
+    if (url.pathname === '/' || DASH_PREFIXES.some((pre) => dashPath.startsWith(pre)) || url.pathname === '/index.html') {
+      const res = await serveDashboard(env, dashPath);
+      if (res) return res;
+    }
+    if (url.pathname === '/__lamp/info') return html(landingPage(env));
 
     const seg = url.pathname.slice(1).split('/');
     const slug = seg[0];
@@ -1245,6 +1284,32 @@ function badgeSvg(label) {
 <circle cx="16" cy="14" r="6" fill="#ffd23f"/>
 <text x="28" y="18" font-family="-apple-system,Segoe UI,sans-serif" font-size="11.5" fill="#f6f1e6">${esc(text)}</text>
 </svg>`;
+}
+
+async function serveDashboard(env, path) {
+  const url = new URL(env.PUBLIC_BASE || 'https://lamp-edge.helpaboutflux.workers.dev');
+  if (!dashCache || Date.now() - dashCacheAt > 60_000) {
+    const bundle = await env.LAMP_KV.get('dash:files', 'json');
+    if (!bundle) return null;
+    dashCache = bundle;
+    dashCacheAt = Date.now();
+  }
+  let p = path || 'index.html';
+  if (p === '' || p === '/') p = 'index.html';
+  p = p.replace(/^\/+/, '');
+  const b64 = dashCache[p];
+  if (!b64) return null;
+  const m = /\.([a-z0-9]+)$/i.exec(p);
+  const type = guessType(p);
+  const bin = b64ToBytes(b64);
+  const isText = /^text\/|json|xml|svg|javascript/.test(type);
+  return new Response(isText ? new TextDecoder().decode(bin) : bin, {
+    headers: {
+      'content-type': type,
+      'cache-control': p === 'index.html' ? 'no-cache' : 'public, max-age=600',
+      'x-lamp-app': '1'
+    }
+  });
 }
 
 function landingPage(env) {

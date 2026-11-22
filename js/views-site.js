@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { api, downloadZip } from './api.js';
 import { inlineNote, errorBox, emptyBox, thumbFor, rerender, state, go } from './core.js';
 import { deployPanelHTML, mountDeployPanel } from './deploy.js';
-import { selectHTML, bindSelects, getSelectValue, colorPickerHTML, bindColorPickers, getColor, areaChart } from './ui.js';
+import { selectHTML, bindSelects, getSelectValue, colorPickerHTML, bindColorPickers, getColor, areaChart, ringHTML } from './ui.js';
 import { ideTab, seoTab, analyticsTab, formsTab } from './views-ide.js';
 import { qrSvg } from './qr.js';
 import { edgeUrl } from './api.js';
@@ -78,23 +78,37 @@ export async function siteView(route) {
         <div class="card__body">${deployPanelHTML()}</div>
       </div>
       <div class="card">
-        <div class="card__head"><div><div class="card__title">버전 타임라인</div><div class="card__sub">최근 ${versions.length}개 · 최대 20개 보관</div></div></div>
-        <div class="card__body">${timelineHTML(site, versions, true)}</div>
+        <div class="card__head"><div><div class="card__title">버전 타임라인</div><div class="card__sub" data-tl-sub>최근 ${versions.length}개 · 최대 20개 보관</div></div></div>
+        <div class="card__body" data-timeline>${timelineHTML(site, versions, true)}</div>
       </div>
     </div>`;
     mount = (root) => {
       bindCommon(root, site);
-      mountDeployPanel(root, { slug, onDone: () => rerender() });
+      mountDeployPanel(root, {
+        slug,
+        onDone: async () => {
+          try {
+            const fresh = await api.site(slug);
+            const tl = root.querySelector('[data-timeline]');
+            if (tl) tl.innerHTML = timelineHTML(fresh.site, fresh.versions || [], true);
+            const sub = root.querySelector('[data-tl-sub]');
+            if (sub) sub.textContent = `최근 ${(fresh.versions || []).length}개 · 최대 20개 보관`;
+            const badge = root.querySelector('.site-hero .badge:not(.badge--ok):not(.badge--warn)');
+            bindTimeline(root, fresh.site);
+            state.sites = state.sites.map((x) => (x.slug === slug ? { ...x, ...fresh.site } : x));
+          } catch (e) { /* 새로고침 실패는 무시 */ }
+        }
+      });
       bindTimeline(root, site);
     };
   } else if (tab === 'files') {
-    await ideTab(slug, site, versions, (b, m) => { body = b; mount = m; });
+    await ideTab(slug, site, versions, (b, m) => { body += b; mount = m; });
   } else if (tab === 'seo') {
-    await seoTab(slug, site, (b, m) => { body = b; mount = m; });
+    await seoTab(slug, site, (b, m) => { body += b; mount = m; });
   } else if (tab === 'analytics') {
-    await analyticsTab(slug, site, (b, m) => { body = b; mount = m; });
+    await analyticsTab(slug, site, (b, m) => { body += b; mount = m; });
   } else if (tab === 'forms') {
-    await formsTab(slug, site, (b, m) => { body = b; mount = m; });
+    await formsTab(slug, site, (b, m) => { body += b; mount = m; });
   } else if (tab === 'settings') {
     body += settingsHTML(site);
     mount = (root) => bindSettings(root, site);
@@ -171,7 +185,10 @@ async function renderOverview(site, versions) {
             ${weekViews ? `<div class="stat__delta ${delta >= 0 ? 'stat__delta--up' : 'stat__delta--down'}">${delta >= 0 ? '상승' : '하락'} ${Math.abs(delta)}% <span class="dim" style="font-weight:500">최근 3일 대비 이전 3일</span></div>
               <div class="small dim">실시간 3시간 ${fmtNum(liveNow)}회</div>` : '<div class="small dim">첫 방문을 기다리는 중입니다.</div>'}
           </div>
-          ${areaChart(points, { labelEvery: 2 })}
+          ${weekViews ? areaChart(points, { labelEvery: 2 }) : `<div class="empty" style="padding:22px 8px 4px">
+            <div class="empty__ico">${icon('chart', 20)}</div>
+            <p style="margin:0">아직 방문 기록이 없습니다.<br>주소를 공유하면 첫 방문부터 이곳에 쌓입니다.</p>
+          </div>`}
         </div>
       </div>
     </div>
@@ -243,7 +260,7 @@ export function timelineHTML(site, versions, full) {
     ${full ? `<div class="small dim mt-8">버전은 최대 20개까지 보관됩니다. ZIP은 각 버전의 파일을 그대로 담습니다.</div>` : ''}`;
 }
 
-function bindTimeline(root, site) {
+export function bindTimeline(root, site) {
   root.querySelectorAll('[data-act="rollback"]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const v = btn.dataset.version;
@@ -467,4 +484,4 @@ export function bindCommon(root) {
   });
 }
 
-export { areaChart, colorPickerHTML, bindColorPickers, getColor, selectHTML, fmtNum };
+export { areaChart, colorPickerHTML, bindColorPickers, getColor, selectHTML, fmtNum, ringHTML };
