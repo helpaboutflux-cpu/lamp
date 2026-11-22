@@ -3,3 +3,4 @@ tests/.qr.json
 tests/.server.log
 node_modules/
 .DS_Store
+tests/__pycache__/
