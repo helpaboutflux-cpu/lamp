@@ -973,7 +973,7 @@ async function handleApi(req, env, ctx, url) {
 
   if (parts[0] === 'me') {
     const sites = await userSites(env, user.id);
-    return json({ ok: true, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar, admin: !!user.admin }, sites });
+    return json({ ok: true, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar, provider: user.provider || 'email', admin: !!user.admin }, sites });
   }
 
   if (parts[0] === 'sites' && parts.length === 1) {

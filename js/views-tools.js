@@ -12,6 +12,13 @@ import { CONFIG as CFG } from './config.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+function providerLabel(p) {
+  if (p === 'github') return 'GitHub';
+  if (p === 'lk') return 'LK ID';
+  if (p === 'email') return '이메일 인증 코드';
+  return p;
+}
+
 /* ================================================================ 도구 */
 
 export async function toolsView() {
@@ -396,7 +403,7 @@ export async function settingsView() {
         </div>
         <div class="divider"></div>
         <div class="kv small">
-          <dt>로그인 방식</dt><dd>${esc(user.provider || 'email')}</dd>
+          <dt>로그인 방식</dt><dd>${esc(providerLabel(user.provider || 'email'))}</dd>
           <dt>플랜</dt><dd>무료 (사이트 ${state.sites.length} / ${state.limits.sitesPerUser})</dd>
           <dt>월 비용</dt><dd><b>0원</b></dd>
         </div>
@@ -442,7 +449,7 @@ export async function settingsView() {
         <div class="code">curl -X POST ${esc(state.base || CFG.edge)}/api/sites/내-주소/deploy \\
   -H "x-lamp-key: lamp_발급받은키" \\
   -H "content-type: application/json" \\
-  -d '{"files":[{"path":"index.html","text":"<h1>hello</h1>"}]}'</div>
+  -d '{"files":[{"path":"index.html","text":"&lt;h1&gt;hello&lt;/h1&gt;"}]}'</div>
       </div>
 
       <div class="card card--pad" style="grid-column:1/-1">
@@ -500,7 +507,7 @@ export async function settingsView() {
 export function docsView() {
   const sections = [
     ['start', '시작하기', `<ol class="doc-list">
-      <li>로그인합니다. 이메일로 받은 6자리 코드, LK ID, GitHub 계정으로 들어옵니다.</li>
+      <li>로그인합니다. 이메일로 받은 인증 코드, LK ID, GitHub 계정으로 들어옵니다.</li>
       <li>대시보드에서 <b>새 사이트</b>를 누르고 주소와 이름을 정합니다.</li>
       <li>사이트 폴더나 ZIP을 끌어다 놓습니다. index.html이 첫 화면이 됩니다.</li>
       <li>만들어진 주소를 공유합니다. 끝입니다.</li>

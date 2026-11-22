@@ -4,7 +4,7 @@
 정적 사이트가 만들어지고, 버전 되돌리기·내장 편집기·SEO 진단·폼 수집·방문자 분석·문서 생성기를
 한 화면에서 씁니다.
 
-- **앱 주소(라이브)**: https://lamp-edge.helpaboutflux.workers.dev — 이 워커가 대시보드와 호스팅을 함께 제공합니다.
+- **앱 주소(라이브)**: https://lamp-edge.helpaboutflux.workers.dev — 이 워커가 대시보드와 호스팅을 함께 제공합니다. (v1.1.0)
 - 저장소: https://github.com/helpaboutflux-cpu/lamp
   (GitHub Pages로도 띄울 수 있게 구성돼 있습니다. 저장소 Settings → Pages → Deploy from a branch: `main` / `(root)` 를 켜면 `https://helpaboutflux-cpu.github.io/lamp/` 로 열립니다. App 권한에 Pages 설정 권한이 없어 자동 활성화는 하지 못했습니다.)
 - Cloudflare Pages 업로드 스크립트도 들어 있습니다(`worker/deploy_pages.py`). 이 계정에서는 아직 서브도메인이 500을 반환해 워커 호스팅을 기본으로 씁니다.
@@ -69,6 +69,9 @@ CF_API_TOKEN=... CF_ACCOUNT_ID=... LAMP_KV_ID=... \
 LAMP_ADMIN_KEY=... LAMP_SECRET_SALT=... \
 python3 deploy_worker.py --token "$CF_API_TOKEN" --account "$CF_ACCOUNT_ID" \
   --kv "$LAMP_KV_ID" --admin-key "$LAMP_ADMIN_KEY" --salt "$LAMP_SECRET_SALT"
+
+# 코드만 바꿀 때 — 기존 시크릿(ADMIN_KEY·SECRET_SALT)은 keep_bindings 로 보존된다
+CF_API_TOKEN=... CF_ACCOUNT_ID=... python3 deploy_worker_keep.py
 ```
 
 바인딩
@@ -105,10 +108,16 @@ python3 worker/upload_dashboard.py --token "$CF_API_TOKEN" --account "$CF_ACCOUN
 
 ## 로그인
 
-- **이메일 링크 / 코드** — 지금 바로 동작합니다(Supabase email provider).
-- **GitHub** — Supabase → Authentication → Providers → GitHub 에 OAuth 앱을 등록하면 켜집니다.
-  (callback: `https://foisgisqbyaykrlddvio.supabase.co/auth/v1/callback`)
-- **LK ID** — `js/config.js` 의 `lk.clientId` 가 채워지면 동작합니다(LK 쪽에 redirect URL 등록 필요).
+- **이메일 6자리 코드** — 이메일을 넣고 `코드 받기` → 메일로 온 숫자 6자리(`{{ .Token }}`)를 입력합니다.
+  링크 없이 코드만 오며, 확인은 `/auth/v1/verify` 의 `email` 유형(신규 계정은 `signup` 폴백)으로 처리합니다.
+- **GitHub** — Supabase `lamp` 프로젝트의 GitHub provider로 동작합니다. OAuth 앱 callback은
+  `https://foisgisqbyaykrlddvio.supabase.co/auth/v1/callback` 이고, 앱의 Redirect URLs에는
+  실제 접속 주소(`https://lamp-edge.helpaboutflux.workers.dev/**`)가 들어 있어야 합니다.
+- **LK ID** — Soft Hub LK 로그인(`.../oauth.html`)이 일회용 `code`를 돌려주면, 엔진의
+  `POST /api/lk/session` 이 `oauth_exchange_code` 로 프로필(고유 ID·닉네임·색)을 받아
+  `SECRET_SALT` 로 서명한 Lamp 세션 토큰(30일)을 발급합니다. 서비스 키는 쓰지 않습니다.
+  `client_id`는 `worker/lamp-edge.js` 의 `LK.clientId` 와 `js/config.js` 의 `lk.clientId` 가 같아야 하고,
+  돌아올 주소는 정확히 `https://lamp-edge.helpaboutflux.workers.dev/` 입니다.
 
 ## 테스트
 

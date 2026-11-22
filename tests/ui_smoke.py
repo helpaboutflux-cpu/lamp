@@ -196,9 +196,8 @@ def main():
             page.click('[data-act="login-github"]')
             page.wait_for_timeout(300)
             check("GitHub 미설정 안내", page.locator("[data-login-msg] .note--warn").count() == 1)
-            page.click('[data-act="login-lk"]')
-            page.wait_for_timeout(300)
-            check("LK 미설정 안내", "LK ID" in page.locator("[data-login-msg]").inner_text())
+            lk_cls = page.get_attribute('[data-act="login-lk"]', "class") or ""
+            check("LK ID 버튼 활성", "btn--muted" not in lk_cls, lk_cls)
             page.screenshot(path=os.path.join(ROOT, "tests/shots/login-desktop.png"), full_page=False)
 
             # 이메일 6자리 코드 흐름
@@ -207,7 +206,7 @@ def main():
             page.wait_for_timeout(500)
             check("코드 입력칸 노출", page.locator("[data-code-field]").is_visible())
             check("로그인 버튼 노출", page.locator('[data-act="email-verify"]').is_visible())
-            check("코드 안내 문구", "6자리 코드" in page.locator("[data-login-msg]").inner_text())
+            check("코드 안내 문구", "인증 코드" in page.locator("[data-login-msg]").inner_text())
             page.screenshot(path=os.path.join(ROOT, "tests/shots/login-code.png"), full_page=False)
             page.fill("[data-code]", "123456")
             page.wait_for_timeout(200)

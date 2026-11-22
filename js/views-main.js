@@ -108,7 +108,7 @@ export function landingView() {
         </div>
         <div class="steps">
           ${[
-            ['01', '로그인', '이메일로 받은 6자리 코드나 LK ID·GitHub 계정으로 시작합니다. 카드 등록은 없습니다.'],
+            ['01', '로그인', '이메일로 받은 인증 코드나 LK ID·GitHub 계정으로 시작합니다. 카드 등록은 없습니다.'],
             ['02', '끌어다 놓기', '사이트 폴더나 ZIP을 던지면 파일을 검사하고 새 버전을 만듭니다.'],
             ['03', '주소 공유', '생긴 주소를 그대로 쓰거나 도메인을 붙입니다. QR과 배지도 만들 수 있습니다.']
           ].map(([n, t, d]) => `<div class="step"><div class="step__n">${n}</div><h3>${t}</h3><p>${d}</p></div>`).join('')}
@@ -215,7 +215,7 @@ export async function loginView() {
         <div class="auth__box">
           <div class="auth__mob-brand"><img src="assets/lamp-orb.svg" alt="">Lamp</div>
           <h1>Lamp 시작하기</h1>
-          <p>이메일로 받은 6자리 코드나 LK ID·GitHub 계정으로 시작합니다.</p>
+          <p>이메일로 받은 인증 코드나 LK ID·GitHub 계정으로 시작합니다.</p>
 
           <div class="auth__providers">
             <button class="btn btn--lg btn--block ${ghOn ? '' : 'btn--muted'}" data-act="login-github">
@@ -233,8 +233,8 @@ export async function loginView() {
             <div class="field"><label for="login-email">이메일</label>
               <input class="input" id="login-email" type="email" placeholder="you@example.com" autocomplete="email" data-email>
             </div>
-            <div class="field" data-code-field hidden><label for="login-code">메일로 받은 6자리 코드</label>
-              <input class="input input--code" id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" data-code>
+            <div class="field" data-code-field hidden><label for="login-code">메일로 받은 인증 코드</label>
+              <input class="input input--code" id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="인증 코드" data-code>
             </div>
             <button class="btn btn--brand btn--block btn--lg" data-act="email-verify" hidden>로그인</button>
             <button class="btn btn--brand btn--block btn--lg" data-act="email-send">코드 받기</button>
@@ -254,12 +254,12 @@ export async function loginView() {
 
       root.querySelector('[data-act="login-github"]').addEventListener('click', () => {
         if (ghOn) { location.href = githubUrl(); return; }
-        msg('warn', noteBox('warn', 'GitHub 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 6자리 코드로 시작해 주세요.'));
+        msg('warn', noteBox('warn', 'GitHub 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 인증 코드로 시작해 주세요.'));
       });
 
       root.querySelector('[data-act="login-lk"]').addEventListener('click', () => {
         if (lkOn) { location.href = lkIdUrl(lkId); return; }
-        msg('warn', noteBox('warn', 'LK ID 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 6자리 코드로 시작해 주세요.'));
+        msg('warn', noteBox('warn', 'LK ID 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 인증 코드로 시작해 주세요.'));
       });
 
       const emailEl = root.querySelector('[data-email]');
@@ -291,7 +291,7 @@ export async function loginView() {
           paintCooldown();
         }, 1000);
       };
-      const codeReady = () => /^\d{6}$/.test((codeEl.value || '').trim());
+      const codeReady = () => /^\d{6,10}$/.test((codeEl.value || '').trim());
 
       const send = async () => {
         const email = (emailEl.value || '').trim();
@@ -309,8 +309,8 @@ export async function loginView() {
           sendBtn.classList.remove('btn--brand', 'btn--lg');
           sendBtn.classList.add('btn--ghost', 'btn--sm');
           verifyBtn.disabled = !codeReady();
-          msg('ok', noteBox('ok', esc(email) + ' 주소로 6자리 코드를 보냈습니다.',
-            '메일에 적힌 숫자 6자리를 아래에 입력해 주세요. 몇 분 안에 오지 않으면 스팸함을 확인해 주세요.'));
+          msg('ok', noteBox('ok', esc(email) + ' 주소로 인증 코드를 보냈습니다.',
+            '메일 본문에 적힌 숫자 코드를 아래에 입력해 주세요. 몇 분 안에 오지 않으면 스팸함을 확인해 주세요.'));
           codeEl.focus();
           startCooldown(45);
         } catch (err) {
@@ -323,9 +323,9 @@ export async function loginView() {
 
       const verify = async () => {
         const email = sentTo || (emailEl.value || '').trim();
-        const code = (codeEl.value || '').replace(/\D/g, '').slice(0, 6);
-        if (code.length !== 6) {
-          msg('warn', noteBox('warn', '', '6자리 코드를 입력해 주세요.'));
+        const code = (codeEl.value || '').replace(/\D/g, '').slice(0, 10);
+        if (code.length < 6) {
+          msg('warn', noteBox('warn', '', '메일로 받은 인증 코드를 입력해 주세요.'));
           codeEl.focus();
           return;
         }
@@ -349,7 +349,7 @@ export async function loginView() {
       verifyBtn.addEventListener('click', verify);
 
       codeEl.addEventListener('input', () => {
-        const digits = (codeEl.value || '').replace(/\D/g, '').slice(0, 6);
+        const digits = (codeEl.value || '').replace(/\D/g, '').slice(0, 10);
         if (codeEl.value !== digits) codeEl.value = digits;
         if (!verifyBtn.hidden) verifyBtn.disabled = !codeReady();
       });
