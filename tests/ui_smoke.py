@@ -112,6 +112,12 @@ def mock_api(route):
 
 def mock_supa(route):
     url = route.request.url
+    if "/auth/v1/otp" in url:
+        return route.fulfill(status=200, content_type="application/json", body="{}")
+    if "/auth/v1/verify" in url:
+        return route.fulfill(status=200, content_type="application/json", body=json.dumps({
+            "access_token": "otp-access", "refresh_token": "otp-refresh", "expires_in": 3600,
+            "user": {"id": "u1", "email": "test@example.com", "user_metadata": {"full_name": "테스트 사용자"}, "app_metadata": {"provider": "email"}}}))
     if "/auth/v1/settings" in url:
         return route.fulfill(status=200, content_type="application/json",
                              body=json.dumps({"external": {"github": False, "email": True}}))
@@ -185,10 +191,31 @@ def main():
             page.click('a[href="#/login"]')
             page.wait_for_timeout(400)
             check("로그인 화면", page.locator(".auth__box h1").count() == 1)
+            check("이메일 링크 문구 없음", "링크" not in page.locator(".auth__box").inner_text())
+            check("코드 입력은 처음엔 숨김", page.locator("[data-code-field]").is_hidden())
             page.click('[data-act="login-github"]')
             page.wait_for_timeout(300)
             check("GitHub 미설정 안내", page.locator("[data-login-msg] .note--warn").count() == 1)
+            page.click('[data-act="login-lk"]')
+            page.wait_for_timeout(300)
+            check("LK 미설정 안내", "LK ID" in page.locator("[data-login-msg]").inner_text())
             page.screenshot(path=os.path.join(ROOT, "tests/shots/login-desktop.png"), full_page=False)
+
+            # 이메일 6자리 코드 흐름
+            page.fill("[data-email]", "test@example.com")
+            page.click('[data-act="email-send"]')
+            page.wait_for_timeout(500)
+            check("코드 입력칸 노출", page.locator("[data-code-field]").is_visible())
+            check("로그인 버튼 노출", page.locator('[data-act="email-verify"]').is_visible())
+            check("코드 안내 문구", "6자리 코드" in page.locator("[data-login-msg]").inner_text())
+            page.screenshot(path=os.path.join(ROOT, "tests/shots/login-code.png"), full_page=False)
+            page.fill("[data-code]", "123456")
+            page.wait_for_timeout(200)
+            check("코드 자릿수 제한", page.input_value("[data-code]") == "123456")
+            page.click('[data-act="email-verify"]')
+            page.wait_for_timeout(1200)
+            check("코드 로그인 성공", "dashboard" in page.url, page.url)
+            page.evaluate("localStorage.removeItem('lamp:session')")
 
             # 세션 주입 → 대시보드
             page.evaluate("""() => {

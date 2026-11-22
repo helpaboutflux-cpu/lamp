@@ -11,6 +11,8 @@
   --brand: #f0a81e;
   --brand-strong: #d98d05;
   --brand-soft: #fdf3d8;
+  --btn-brand: #f2ab27;
+  --btn-brand-hover: #e3a01a;
   --glow: rgba(255, 205, 60, 0.55);
 
   --bg: #f6f4ee;
@@ -50,6 +52,8 @@
   --brand: #ffc84a;
   --brand-strong: #ffd870;
   --brand-soft: #2c2413;
+  --btn-brand: #ffc84a;
+  --btn-brand-hover: #f2ba36;
   --glow: rgba(255, 200, 74, 0.4);
 
   --bg: #100f0c;
@@ -208,31 +212,27 @@ code, pre, kbd { font-family: var(--mono); }
 /* ---------------------------------------------------------------- 버튼 */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  height: 36px; padding: 0 14px; border-radius: 10px;
+  height: 36px; padding: 0 14px; border-radius: 8px;
   border: 1px solid var(--line-2); background: var(--surface);
   font-size: 13px; font-weight: 600; color: var(--ink);
-  transition: background .14s, border-color .14s, transform .06s, box-shadow .14s;
+  transition: background .12s, border-color .12s, color .12s;
   white-space: nowrap;
 }
 .btn svg { width: 16px; height: 16px; }
-.btn:hover { background: var(--surface-3); border-color: var(--line-2); }
-.btn:active { transform: translateY(1px); }
-.btn[disabled] { opacity: .5; pointer-events: none; }
-.btn--brand {
-  background: linear-gradient(180deg, #f8bd45, #eda01a);
-  border-color: #d9930f; color: #241c05;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .35) inset, 0 8px 18px -10px rgba(214, 148, 12, .8);
-}
-.btn--brand:hover { background: linear-gradient(180deg, #ffc95a, #f2a71f); }
+.btn:hover { background: var(--surface-3); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn--brand { background: var(--btn-brand); border-color: var(--btn-brand); color: #1f1a0b; }
+.btn--brand:hover { background: var(--btn-brand-hover); border-color: var(--btn-brand-hover); }
 .btn--dark { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.btn--dark:hover { background: color-mix(in srgb, var(--ink) 88%, var(--bg)); }
+.btn--dark:hover { background: color-mix(in srgb, var(--ink) 86%, var(--bg)); border-color: color-mix(in srgb, var(--ink) 86%, var(--bg)); }
 .btn--ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
 .btn--ghost:hover { background: var(--surface-3); color: var(--ink); }
-.btn--danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); background: transparent; }
+.btn--danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, var(--line)); background: transparent; }
 .btn--danger:hover { background: var(--bad-soft); }
-.btn--sm { height: 30px; padding: 0 11px; font-size: 12.3px; border-radius: 8px; }
+.btn--muted { color: var(--ink-3); }
+.btn--sm { height: 30px; padding: 0 11px; font-size: 12.3px; border-radius: 7px; }
 .btn--sm svg { width: 14px; height: 14px; }
-.btn--lg { height: 44px; padding: 0 20px; font-size: 14px; border-radius: 12px; }
+.btn--lg { height: 44px; padding: 0 18px; font-size: 14px; border-radius: 10px; }
 .btn--block { width: 100%; }
 
 .icon-btn {
@@ -305,6 +305,11 @@ code, pre, kbd { font-family: var(--mono); }
 .input:focus, .textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); }
 .input::placeholder, .textarea::placeholder { color: var(--ink-3); }
 .input--mono { font-family: var(--mono); font-size: 12.5px; }
+.input--code {
+  font-family: var(--mono); font-size: 19px; font-weight: 650; letter-spacing: .3em;
+  text-align: center; height: 46px; padding-left: .3em;
+}
+.input--code::placeholder { font-weight: 500; letter-spacing: .24em; color: var(--ink-3); }
 .input--sm { height: 32px; font-size: 12.5px; }
 .input-group { display: flex; align-items: stretch; gap: 0; }
 .input-group .input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
@@ -794,7 +799,7 @@ code, pre, kbd { font-family: var(--mono); }
 .mock {
   margin: 52px auto 0; max-width: 980px; border-radius: 18px; overflow: hidden;
   border: 1px solid var(--line); background: var(--surface);
-  box-shadow: 0 50px 90px -50px rgba(60, 45, 10, .55), 0 2px 0 rgba(255, 255, 255, .5) inset;
+  box-shadow: 0 40px 70px -52px rgba(60, 45, 10, .45);
   transform: perspective(1400px) rotateX(2.2deg); transform-origin: top center;
 }
 .mock__bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }

@@ -8,8 +8,8 @@ import { deployPanelHTML, mountDeployPanel } from './deploy.js';
 import { areaChart, ringHTML, selectHTML, bindSelects, getSelectValue } from './ui.js';
 import { analyzeSite } from './seo.js';
 import {
-  isSignedIn, providerEnabled, githubUrl, lkIdUrl, signInEmail, signUpEmail,
-  sendMagicLink, verifyEmailCode, consumeRedirect, signOut, currentUser, CONFIG
+  isSignedIn, providerEnabled, githubUrl, lkIdUrl, signInEmail,
+  sendEmailCode, verifyEmailCode, consumeRedirect, signOut, currentUser, CONFIG
 } from './auth.js';
 import { CONFIG as CFG } from './config.js';
 
@@ -108,7 +108,7 @@ export function landingView() {
         </div>
         <div class="steps">
           ${[
-            ['01', '로그인', '이메일 링크나 GitHub 계정으로 시작합니다. 카드 등록은 없습니다.'],
+            ['01', '로그인', '이메일로 받은 6자리 코드나 LK ID·GitHub 계정으로 시작합니다. 카드 등록은 없습니다.'],
             ['02', '끌어다 놓기', '사이트 폴더나 ZIP을 던지면 파일을 검사하고 새 버전을 만듭니다.'],
             ['03', '주소 공유', '생긴 주소를 그대로 쓰거나 도메인을 붙입니다. QR과 배지도 만들 수 있습니다.']
           ].map(([n, t, d]) => `<div class="step"><div class="step__n">${n}</div><h3>${t}</h3><p>${d}</p></div>`).join('')}
@@ -184,7 +184,15 @@ export async function loginView() {
   if (isSignedIn()) { go('/dashboard'); return null; }
   let ghOn = false;
   try { ghOn = await providerEnabled('github'); } catch (e) { ghOn = false; }
-  const lkOn = !!CFG.lk.clientId;
+
+  let lkId = CFG.lk.clientId || '';
+  if (!lkId) {
+    try {
+      const cfg = await api.engineConfig();
+      lkId = (cfg && cfg.lk && cfg.lk.clientId) || '';
+    } catch (e) { lkId = ''; }
+  }
+  const lkOn = !!lkId;
 
   return {
     chrome: false,
@@ -207,13 +215,13 @@ export async function loginView() {
         <div class="auth__box">
           <div class="auth__mob-brand"><img src="assets/lamp-orb.svg" alt="">Lamp</div>
           <h1>Lamp 시작하기</h1>
-          <p>로그인하면 바로 배포할 수 있습니다.</p>
+          <p>이메일로 받은 6자리 코드나 LK ID·GitHub 계정으로 시작합니다.</p>
 
           <div class="auth__providers">
             <button class="btn btn--lg btn--block ${ghOn ? '' : 'btn--muted'}" data-act="login-github">
               ${icon('github', 18)}<span>GitHub로 계속</span>
             </button>
-            <button class="btn btn--lg btn--block" data-act="login-lk">
+            <button class="btn btn--lg btn--block ${lkOn ? '' : 'btn--muted'}" data-act="login-lk">
               ${icon('key', 18)}<span>LK ID로 계속</span>
             </button>
           </div>
@@ -225,101 +233,131 @@ export async function loginView() {
             <div class="field"><label for="login-email">이메일</label>
               <input class="input" id="login-email" type="email" placeholder="you@example.com" autocomplete="email" data-email>
             </div>
-            <div class="field" data-code-field hidden><label for="login-code">메일로 온 6자리 코드</label>
-              <input class="input input--mono" id="login-code" inputmode="numeric" placeholder="123456" data-code>
+            <div class="field" data-code-field hidden><label for="login-code">메일로 받은 6자리 코드</label>
+              <input class="input input--code" id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" data-code>
             </div>
-            <button class="btn btn--dark btn--block btn--lg" data-act="email-send">로그인 링크 받기</button>
-            <button class="btn btn--ghost btn--sm btn--block" data-act="toggle-password">비밀번호로 로그인</button>
+            <button class="btn btn--brand btn--block btn--lg" data-act="email-verify" hidden>로그인</button>
+            <button class="btn btn--brand btn--block btn--lg" data-act="email-send">코드 받기</button>
           </div>
 
           <div data-login-msg class="mt-16"></div>
 
-          <p class="tiny dim mt-16" style="text-align:center">계속하면 Lamp의 이용 규칙에 동의하는 것으로 봅니다.<br>로그인 정보는 Supabase가 처리하고 Lamp는 비밀번호를 저장하지 않습니다.</p>
+          <p class="tiny dim mt-16" style="text-align:center">계속하면 Lamp의 이용 규칙에 동의하는 것으로 봅니다.<br>로그인 정보는 Supabase와 LK ID가 처리하고 Lamp는 비밀번호를 저장하지 않습니다.</p>
         </div>
       </div>
     </div>`,
     mount(root) {
       const msg = (kind, text) => { root.querySelector('[data-login-msg]').innerHTML = text; };
+      const noteBox = (kind, title, text) =>
+        `<div class="note note--${kind}">${icon(kind === 'ok' ? 'check' : 'alert', 16)}<div class="note__body">` +
+        (title ? `<b>${title}</b>` : '') + text + `</div></div>`;
 
       root.querySelector('[data-act="login-github"]').addEventListener('click', () => {
         if (ghOn) { location.href = githubUrl(); return; }
-        msg('warn', `<div class="note note--warn">${icon('alert', 16)}<div class="note__body">
-          <b>GitHub 로그인이 아직 설정되지 않았습니다.</b>
-          Supabase 프로젝트에서 Authentication → Providers → GitHub을 켜고 OAuth 앱의 Client ID·Secret을 넣으면 바로 동작합니다.
-          지금은 아래 이메일 로그인을 사용해 주세요.</div></div>`);
+        msg('warn', noteBox('warn', 'GitHub 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 6자리 코드로 시작해 주세요.'));
       });
 
       root.querySelector('[data-act="login-lk"]').addEventListener('click', () => {
-        if (lkOn) { location.href = lkIdUrl(); return; }
-        msg('warn', `<div class="note note--warn">${icon('alert', 16)}<div class="note__body">
-          <b>LK ID 앱 등록이 필요합니다.</b>
-          Lamp가 LK 로그인을 쓰려면 LK 쪽에 Lamp의 client_id와 돌아올 주소(${esc(CFG.site)})가 등록되어야 합니다.
-          등록되면 이 버튼이 바로 동작합니다. 지금은 이메일 로그인을 사용해 주세요.</div></div>`);
+        if (lkOn) { location.href = lkIdUrl(lkId); return; }
+        msg('warn', noteBox('warn', 'LK ID 로그인이 아직 연결되지 않았습니다.', '지금은 메일로 받은 6자리 코드로 시작해 주세요.'));
       });
 
-      let passwordMode = false;
-      root.querySelector('[data-act="toggle-password"]').addEventListener('click', (e) => {
-        passwordMode = !passwordMode;
-        e.currentTarget.textContent = passwordMode ? '이메일 링크로 로그인' : '비밀번호로 로그인';
-        const pw = root.querySelector('[data-password]');
-        if (pw) pw.remove();
-        if (passwordMode) {
-          const host = root.querySelector('[data-code-field]');
-          const wrap = document.createElement('div');
-          wrap.className = 'field';
-          wrap.innerHTML = `<label for="login-pw">비밀번호</label><input class="input" id="login-pw" type="password" autocomplete="current-password" data-password>`;
-          host.insertAdjacentElement('beforebegin', wrap);
-          root.querySelector('[data-code-field]').hidden = true;
-          root.querySelector('[data-act="email-send"]').textContent = '로그인';
-          root.querySelector('[data-act="email-send"]').dataset.mode = 'password';
+      const emailEl = root.querySelector('[data-email]');
+      const codeEl = root.querySelector('[data-code]');
+      const codeField = root.querySelector('[data-code-field]');
+      const sendBtn = root.querySelector('[data-act="email-send"]');
+      const verifyBtn = root.querySelector('[data-act="email-verify"]');
+
+      let sentTo = '';
+      let cooldown = 0;
+      let timer = null;
+
+      const paintCooldown = () => {
+        if (cooldown > 0) {
+          sendBtn.disabled = true;
+          sendBtn.textContent = `코드 다시 받기 (${cooldown}초)`;
         } else {
-          root.querySelector('[data-act="email-send"]').textContent = '로그인 링크 받기';
-          root.querySelector('[data-act="email-send"]').dataset.mode = 'link';
+          sendBtn.disabled = false;
+          sendBtn.textContent = sentTo ? '코드 다시 받기' : '코드 받기';
         }
-      });
+      };
+      const startCooldown = (sec) => {
+        cooldown = sec;
+        paintCooldown();
+        clearInterval(timer);
+        timer = setInterval(() => {
+          cooldown -= 1;
+          if (cooldown <= 0) { clearInterval(timer); cooldown = 0; }
+          paintCooldown();
+        }, 1000);
+      };
+      const codeReady = () => /^\d{6}$/.test((codeEl.value || '').trim());
 
-      root.querySelector('[data-act="email-send"]').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        const email = (root.querySelector('[data-email]').value || '').trim();
+      const send = async () => {
+        const email = (emailEl.value || '').trim();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          msg('warn', `<div class="note note--warn">${icon('alert', 16)}<div class="note__body">이메일 주소를 확인해 주세요.</div></div>`);
+          msg('warn', noteBox('warn', '', '이메일 주소를 확인해 주세요.'));
+          emailEl.focus();
           return;
         }
-        btn.disabled = true;
-        const mode = btn.dataset.mode || 'link';
+        sendBtn.disabled = true;
         try {
-          if (mode === 'password') {
-            const pw = (root.querySelector('[data-password]') || {}).value || '';
-            await signInEmail(email, pw);
-            location.hash = '#/dashboard';
-            location.reload();
-            return;
-          }
-          await sendMagicLink(email);
-          root.querySelector('[data-code-field]').hidden = false;
-          msg('ok', `<div class="note note--ok">${icon('check', 16)}<div class="note__body">
-            <b>${esc(email)}로 로그인 링크를 보냈습니다.</b>
-            메일의 링크를 열거나, 메일에 6자리 코드가 있으면 아래에 입력하세요. 메일이 오지 않으면 스팸함을 확인해 주세요.</div></div>`);
-          const codeBtn = document.createElement('button');
-          codeBtn.className = 'btn btn--sm btn--block mt-8';
-          codeBtn.textContent = '코드로 로그인';
-          codeBtn.addEventListener('click', async () => {
-            const code = (root.querySelector('[data-code]').value || '').trim();
-            if (code.length < 4) { msg('warn', '코드를 입력해 주세요.'); return; }
-            try {
-              await verifyEmailCode(email, code);
-              location.hash = '#/dashboard';
-              location.reload();
-            } catch (err) {
-              msg('bad', `<div class="note note--bad">${icon('alert', 16)}<div class="note__body">${esc(err.message)}</div></div>`);
-            }
-          });
-          root.querySelector('[data-login-msg]').appendChild(codeBtn);
+          await sendEmailCode(email);
+          sentTo = email;
+          codeField.hidden = false;
+          verifyBtn.hidden = false;
+          sendBtn.classList.remove('btn--brand', 'btn--lg');
+          sendBtn.classList.add('btn--ghost', 'btn--sm');
+          verifyBtn.disabled = !codeReady();
+          msg('ok', noteBox('ok', esc(email) + ' 주소로 6자리 코드를 보냈습니다.',
+            '메일에 적힌 숫자 6자리를 아래에 입력해 주세요. 몇 분 안에 오지 않으면 스팸함을 확인해 주세요.'));
+          codeEl.focus();
+          startCooldown(45);
         } catch (err) {
-          msg('bad', `<div class="note note--bad">${icon('alert', 16)}<div class="note__body"><b>로그인하지 못했습니다</b>${esc(err.message)}</div></div>`);
-        } finally {
-          btn.disabled = false;
+          const limited = err.status === 429;
+          msg('bad', noteBox('bad', limited ? '잠시 뒤 다시 시도해 주세요.' : '코드를 보내지 못했습니다.',
+            esc(limited ? '짧은 시간에 너무 여러 번 요청했습니다. 1분쯤 뒤에 다시 눌러 주세요.' : err.message)));
+          sendBtn.disabled = false;
         }
+      };
+
+      const verify = async () => {
+        const email = sentTo || (emailEl.value || '').trim();
+        const code = (codeEl.value || '').replace(/\D/g, '').slice(0, 6);
+        if (code.length !== 6) {
+          msg('warn', noteBox('warn', '', '6자리 코드를 입력해 주세요.'));
+          codeEl.focus();
+          return;
+        }
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = '확인 중…';
+        try {
+          await verifyEmailCode(email, code);
+          msg('ok', noteBox('ok', '로그인했습니다.', '대시보드로 이동합니다.'));
+          location.hash = '#/dashboard';
+          location.reload();
+          return;
+        } catch (err) {
+          msg('bad', noteBox('bad', '코드를 확인하지 못했습니다.',
+            esc(/expired|invalid/i.test(err.message) ? '코드가 만료되었거나 맞지 않습니다. 새 코드를 받아 다시 입력해 주세요.' : err.message)));
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = '로그인';
+        }
+      };
+
+      sendBtn.addEventListener('click', send);
+      verifyBtn.addEventListener('click', verify);
+
+      codeEl.addEventListener('input', () => {
+        const digits = (codeEl.value || '').replace(/\D/g, '').slice(0, 6);
+        if (codeEl.value !== digits) codeEl.value = digits;
+        if (!verifyBtn.hidden) verifyBtn.disabled = !codeReady();
+      });
+      codeEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && codeReady() && !verifyBtn.hidden) { e.preventDefault(); verify(); }
+      });
+      emailEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); if (!sendBtn.disabled) send(); }
       });
     }
   };

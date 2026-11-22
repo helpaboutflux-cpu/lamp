@@ -41,6 +41,19 @@ function sessionFromToken(payload, previous = {}) {
   };
 }
 
+/** 앱이 실제로 열린 주소(끝 슬래시 포함). OAuth 승인 후 돌아올 곳이다. */
+export function appRoot() {
+  try {
+    const u = new URL(location.href);
+    let path = u.pathname || '/';
+    path = path.replace(/index\.html$/, '');
+    if (!path.endsWith('/')) path = path.replace(/[^/]*$/, '');
+    return u.origin + path;
+  } catch (e) {
+    return CONFIG.site;
+  }
+}
+
 async function authFetch(path, body, extra = {}) {
   const res = await fetch(SUPA + path, {
     method: 'POST',
@@ -78,42 +91,68 @@ export async function signInEmail(email, password) {
   return currentUser();
 }
 
-export async function signUpEmail(email, password, name) {
-  const data = await authFetch('/auth/v1/signup', { email, password, data: { full_name: name || '' } });
-  if (data.access_token) {
-    const u = await loadUser(data.access_token);
-    saveSession({ ...sessionFromToken(data), user: u });
-    return { confirmed: true, user: currentUser() };
-  }
-  return { confirmed: false, user: null };
-}
-
-export async function sendMagicLink(email) {
+/** 메일로 6자리 인증 코드를 보낸다. 링크가 아닌 코드만 온다. */
+export async function sendEmailCode(email) {
   await authFetch('/auth/v1/otp', { email, create_user: true });
   return true;
 }
 
+/** 메일로 받은 6자리 코드를 확인한다. 신규 사용자는 signup 유형으로 한 번 더 시도한다. */
 export async function verifyEmailCode(email, token) {
-  const data = await authFetch('/auth/v1/verify', { type: 'email', email, token });
-  const u = await loadUser(data.access_token);
-  saveSession({ ...sessionFromToken(data), user: u });
-  return currentUser();
+  let lastErr = null;
+  for (const type of ['email', 'signup']) {
+    try {
+      const data = await authFetch('/auth/v1/verify', { type, email, token });
+      const u = await loadUser(data.access_token);
+      saveSession({ ...sessionFromToken(data), user: u });
+      return currentUser();
+    } catch (e) {
+      lastErr = e;
+      const m = String(e.code || '') + ' ' + String(e.message || '');
+      const retriable = /expired|invalid|otp|token|not\s*found|signup|email/i.test(m);
+      if (!retriable || e.status === 429) throw e;
+    }
+  }
+  throw lastErr || new Error('코드를 확인하지 못했습니다.');
 }
 
 export function githubUrl() {
-  const redirect = CONFIG.site.replace(/\/$/, '') + '/';
+  const redirect = appRoot();
   return `${SUPA}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(redirect)}&flow_type=implicit&scopes=read:user%20user:email`;
 }
 
-export function lkIdUrl() {
-  if (!CONFIG.lk.clientId) return '';
-  const redirect = CONFIG.site.replace(/\/$/, '') + '/';
-  const state = Math.random().toString(36).slice(2, 10);
+/** LK ID 승인 주소. clientId는 엔진 설정(/api/config)에서 받아 쓴다. */
+export function lkIdUrl(clientId) {
+  const id = clientId || CONFIG.lk.clientId;
+  if (!id) return '';
+  const redirect = appRoot();
+  const state = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   store.set('lk_state', state);
-  return CONFIG.lk.authorize + '?client_id=' + encodeURIComponent(CONFIG.lk.clientId) +
+  return CONFIG.lk.authorize + '?client_id=' + encodeURIComponent(id) +
     '&redirect_uri=' + encodeURIComponent(redirect) +
-    '&response_type=code&scope=' + encodeURIComponent(CONFIG.lk.scope) +
+    '&response_type=code&scope=' + encodeURIComponent(CONFIG.lk.scope || 'profile:basic') +
     '&state=' + encodeURIComponent(state);
+}
+
+/** 엔진에 LK 승인 코드를 건네고 Lamp 세션 토큰을 받는다. */
+async function lkSession(code) {
+  const base = CONFIG.edge.replace(/\/$/, '');
+  let res;
+  try {
+    res = await fetch(base + '/api/lk/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, redirectUri: appRoot() })
+    });
+  } catch (e) {
+    throw new Error('LK ID 확인 서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || !data.token) {
+    const msg = (data && data.error && data.error.message) || 'LK ID 로그인을 마치지 못했습니다.';
+    throw new Error(msg);
+  }
+  return data;
 }
 
 async function loadUser(accessToken) {
@@ -140,6 +179,7 @@ export async function refreshSession() {
 export async function ensureFresh() {
   if (!session) return null;
   if (Date.now() < (session.expires_at || 0)) return session;
+  if (session.lk) { saveSession(null); return null; }   // LK 세션은 만료되면 다시 로그인한다.
   return await refreshSession();
 }
 
@@ -180,15 +220,37 @@ export async function consumeRedirect() {
   }
 
   // LK ID 콜백: ?code=...&state=...
-  if (search.includes('code=') && search.includes('state=')) {
+  if (search.includes('code=') || search.includes('error=')) {
     const params = new URLSearchParams(search);
     const expected = store.get('lk_state', '');
-    if (params.get('state') && params.get('state') === expected) {
-      history.replaceState(null, '', window.location.pathname);
-      const err = new Error('LK ID 승인은 확인됐지만 Lamp에는 아직 LK ID 앱 등록(client_id)이 없어 계정을 연결할 수 없습니다.');
-      err.lkCode = params.get('code');
-      throw err;
+    const code = params.get('code') || '';
+    if (!code && params.get('state') !== expected) return false;
+
+    history.replaceState(null, '', location.pathname);
+    store.del('lk_state');
+
+    if (!code) {
+      throw new Error('LK ID 로그인이 취소되었습니다.');
     }
+    if (!expected || params.get('state') !== expected) {
+      throw new Error('LK ID 로그인 요청이 만료되었거나 출처가 다릅니다. Lamp에서 다시 시도해 주세요.');
+    }
+
+    const data = await lkSession(code);
+    const u = data.user || {};
+    saveSession({
+      access_token: data.token,
+      refresh_token: '',
+      expires_at: data.expires_at || Date.now() + 29 * 86400000,
+      lk: true,
+      user: {
+        id: u.id || '',
+        email: u.email || '',
+        user_metadata: { full_name: u.name || '', lk_color: u.color || '', lk_text: u.text || '' },
+        app_metadata: { provider: 'lk' }
+      }
+    });
+    return true;
   }
   return false;
 }

@@ -500,7 +500,7 @@ export async function settingsView() {
 export function docsView() {
   const sections = [
     ['start', '시작하기', `<ol class="doc-list">
-      <li>로그인합니다. 이메일 링크 또는 GitHub 계정으로 들어옵니다.</li>
+      <li>로그인합니다. 이메일로 받은 6자리 코드, LK ID, GitHub 계정으로 들어옵니다.</li>
       <li>대시보드에서 <b>새 사이트</b>를 누르고 주소와 이름을 정합니다.</li>
       <li>사이트 폴더나 ZIP을 끌어다 놓습니다. index.html이 첫 화면이 됩니다.</li>
       <li>만들어진 주소를 공유합니다. 끝입니다.</li>

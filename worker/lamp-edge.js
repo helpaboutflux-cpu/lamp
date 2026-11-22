@@ -85,6 +85,98 @@ async function hmac(text, secret) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/* ---------------- LK ID 로그인 ----------------
+   승인 화면(Soft Hub oauth.html)이 돌려준 일회용 code를 여기서 프로필로 교환하고,
+   Lamp가 서명한 세션 토큰을 발급한다. LK 쪽 키는 공개 anon 키이고 서비스 키는 쓰지 않는다. */
+
+const LK = {
+  url: 'https://dgqagaiaykmrmmyxqtol.supabase.co',
+  key: 'sb_publishable_RJ0U_IQwByuK-3Sqa9j0uQ_l_7AmZEY',
+  clientId: 'lkc_lampwebdeploy20261122',   // Soft Hub에 등록한 Lamp 앱의 client_id
+  ttl: 30 * 24 * 60 * 60 * 1000       // 30일
+};
+
+function b64url(text) {
+  return bytesToB64(enc.encode(text)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function unb64url(s) {
+  const b64 = String(s).replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+  return new TextDecoder().decode(b64ToBytes(b64 + pad));
+}
+
+function lkLoginEnabled() {
+  return !!LK.clientId;
+}
+
+async function lkMintToken(profile, env) {
+  const payload = b64url(JSON.stringify({
+    u: profile.id, n: profile.name, c: profile.color || '', t: profile.text || ''
+  }));
+  const exp = Date.now() + LK.ttl;
+  const sig = await hmac('lk:' + payload + ':' + exp, env.SECRET_SALT || 'lamp');
+  return { token: 'lamp_lk.' + payload + '.' + exp + '.' + sig, expiresAt: exp };
+}
+
+async function lkReadToken(token, env) {
+  if (!token || !token.startsWith('lamp_lk.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 4) return null;
+  const payload = parts[1];
+  const exp = Number(parts[2]);
+  const sig = parts[3];
+  if (!payload || !Number.isFinite(exp) || exp <= Date.now()) return null;
+  const expect = await hmac('lk:' + payload + ':' + exp, env.SECRET_SALT || 'lamp');
+  if (expect !== sig) return null;
+  let p;
+  try { p = JSON.parse(unb64url(payload)); } catch (e) { return null; }
+  if (!p || !p.u) return null;
+  return {
+    id: p.u, name: p.n || 'LK 사용자', email: '', avatar: '', provider: 'lk',
+    lkColor: p.c || '', lkText: p.t || ''
+  };
+}
+
+async function lkExchange(code, redirectUri, env) {
+  if (!lkLoginEnabled()) return { error: fail('LK ID 로그인이 아직 준비되지 않았습니다.', 503, 'lk_not_configured') };
+  const allowed = [env.PUBLIC_BASE || '', 'https://lamp-edge.helpaboutflux.workers.dev']
+    .filter(Boolean).map((b) => b.replace(/\/$/, '') + '/');
+  if (!allowed.includes(redirectUri)) {
+    return { error: fail('돌아올 주소가 올바르지 않습니다.', 400, 'lk_bad_redirect') };
+  }
+  if (!/^lk_[a-f0-9]{8,80}$/i.test(code)) return { error: fail('승인 코드가 올바르지 않습니다.', 400, 'lk_bad_code') };
+
+  const res = await fetch(LK.url.replace(/\/$/, '') + '/rest/v1/rpc/oauth_exchange_code', {
+    method: 'POST',
+    headers: { apikey: LK.key, 'content-type': 'application/json' },
+    body: JSON.stringify({ p_code: code, p_client_id: LK.clientId, p_redirect_uri: redirectUri })
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const raw = (data && (data.message || data.error_description || data.error)) || '';
+    const expired = /expired-code/i.test(raw);
+    return { error: fail(expired ? '승인 코드가 만료되었습니다. LK ID로 다시 로그인해 주세요.' :
+      'LK ID 승인을 확인하지 못했습니다. 다시 시도해 주세요.', expired ? 400 : 502, 'lk_exchange_failed') };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || !row.sub) return { error: fail('LK ID 프로필을 받지 못했습니다.', 502, 'lk_no_profile') };
+
+  const profile = {
+    id: 'lk-' + String(row.sub),
+    name: String(row.nickname || 'LK 사용자').slice(0, 40),
+    color: row.avatar_color || '',
+    text: row.avatar_text || ''
+  };
+  const minted = await lkMintToken(profile, env);
+  return {
+    payload: {
+      ok: true, token: minted.token, expires_at: minted.expiresAt,
+      user: { id: profile.id, name: profile.name, email: '', avatar: '', provider: 'lk', color: profile.color, text: profile.text }
+    }
+  };
+}
+
 function b64ToBytes(b64) {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -244,7 +336,13 @@ async function apiKeyUser(key, env) {
 async function identify(req, env) {
   const auth = req.headers.get('authorization') || '';
   if (auth.toLowerCase().startsWith('bearer ')) {
-    const u = await supabaseUser(auth.slice(7).trim(), env);
+    const token = auth.slice(7).trim();
+    if (token.startsWith('lamp_lk.')) {
+      const lk = await lkReadToken(token, env);
+      if (lk) return lk;
+      return null;
+    }
+    const u = await supabaseUser(token, env);
     if (u) return u;
   }
   const key = req.headers.get('x-lamp-key') || '';
@@ -854,8 +952,18 @@ async function handleApi(req, env, ctx, url) {
     return json({
       ok: true, limits: LIMITS, base: env.PUBLIC_BASE || '',
       supabase: { url: env.SUPABASE_URL || '' },
-      features: { githubImport: true, forms: true, abtest: true, password: true }
+      lk: { clientId: LK.clientId, enabled: lkLoginEnabled() },
+      features: { githubImport: true, forms: true, abtest: true, password: true, lkLogin: lkLoginEnabled() }
     });
+  }
+  if (parts[0] === 'lk' && parts[1] === 'session' && method === 'POST') {
+    const body = await req.json().catch(() => ({}));
+    const code = String(body.code || '').trim();
+    const redirectUri = String(body.redirectUri || '').trim();
+    if (!code || !redirectUri) return fail('승인 코드가 없습니다.', 400, 'lk_bad_request');
+    const out = await lkExchange(code, redirectUri, env);
+    if (out.error) return out.error;
+    return json(out.payload);
   }
   if (parts[0] === 'health') return json({ ok: true, ts: nowIso(), base: env.PUBLIC_BASE || '' });
 
@@ -1306,7 +1414,7 @@ async function serveDashboard(env, path) {
   return new Response(isText ? new TextDecoder().decode(bin) : bin, {
     headers: {
       'content-type': type,
-      'cache-control': p === 'index.html' ? 'no-cache' : 'public, max-age=600',
+      'cache-control': 'no-cache, must-revalidate',
       'x-lamp-app': '1'
     }
   });
