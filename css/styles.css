@@ -695,7 +695,7 @@ code, pre, kbd { font-family: var(--mono); }
     background: var(--surface); box-shadow: var(--shadow-lg);
   }
   .sidebar.is-open { transform: none; }
-  .sidebar__close { display: grid; }
+  .icon-btn.sidebar__close { display: grid; }
   .scrim.is-open { display: block; position: fixed; inset: 0; background: rgba(20, 16, 8, .38); z-index: 80; backdrop-filter: blur(2px); }
   .topbar { padding: 14px 18px 10px; }
   .topbar__menu { display: grid; }
@@ -720,7 +720,12 @@ code, pre, kbd { font-family: var(--mono); }
   .card__body { padding: 13px 15px 16px; }
   .card--pad { padding: 15px; }
   .table th, .table td { padding: 10px 11px; }
-  .metric-row { grid-template-columns: minmax(0, 1fr); }
+  .metric-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .metric { padding: 8px 9px; }
+  .metric b { font-size: 15px; }
+  .metric span { font-size: 10.5px; }
+  .site-url { word-break: break-all; }
+  .site-hero .row.row--tight { gap: 6px; }
   .kv { grid-template-columns: 92px minmax(0, 1fr); }
   .stat__num { font-size: 26px; }
   .topbar__actions .btn span { display: none; }
