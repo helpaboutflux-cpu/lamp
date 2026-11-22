@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lamp — 0원 웹 배포 플랫폼</title>
+<meta name="description" content="Lamp는 폴더를 끌어다 놓으면 바로 웹사이트가 되는 0원 배포 플랫폼입니다. 버전 롤백, 내장 코드 편집기, SEO 진단, 폼 수집, 방문자 분석까지 한 곳에서.">
+<meta name="theme-color" content="#f7f5f0">
+<link rel="icon" href="assets/lamp-orb.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/lamp-orb.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lamp — 0원 웹 배포 플랫폼">
+<meta property="og:description" content="폴더를 끌어다 놓으면 바로 웹사이트가 됩니다. 무료로 10개 사이트, 사이트당 10MB.">
+<meta property="og:image" content="assets/lamp-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app" id="app" hidden>
+  <aside class="sidebar" id="sidebar" aria-label="주 메뉴">
+    <div class="sidebar__head">
+      <a class="brand" href="#/dashboard" aria-label="Lamp 홈">
+        <img class="brand__orb" src="assets/lamp-orb.svg" alt="" width="26" height="26">
+        <span class="brand__word">Lamp</span>
+      </a>
+      <button class="icon-btn sidebar__close" data-act="nav-close" aria-label="메뉴 닫기" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="sidebar__foot">
+      <button class="account" data-act="go-account" type="button">
+        <span class="account__av" id="acctAvatar">L</span>
+        <span class="account__txt">
+          <b id="acctName">로그인</b>
+          <i id="acctMail">계정을 연결하세요</i>
+        </span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="account__chev"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <button class="theme-btn" data-act="toggle-theme" type="button" aria-label="라이트·다크 전환">
+        <span class="theme-btn__ico" id="themeIco"></span>
+        <span class="theme-btn__label" id="themeLabel">다크 모드</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim" data-act="nav-close"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn topbar__menu" data-act="nav-open" aria-label="메뉴 열기" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="topbar__titles">
+        <h1 id="pageTitle">대시보드</h1>
+        <p id="pageSub">Lamp에 오신 것을 환영합니다</p>
+      </div>
+      <div class="topbar__actions" id="topActions"></div>
+    </header>
+    <div class="view" id="view" tabindex="-1"></div>
+  </main>
+</div>
+
+<div class="auth-host" id="auth" hidden></div>
+
+<div class="boot" id="boot">
+  <img src="assets/lamp-orb.svg" alt="" width="54" height="54">
+  <p>Lamp를 켜는 중</p>
+</div>
+
+<div class="inline-note-host" id="noteHost" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

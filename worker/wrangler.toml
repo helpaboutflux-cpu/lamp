@@ -1,0 +1,21 @@
+name = "lamp-edge"
+main = "lamp-edge.js"
+compatibility_date = "2024-11-01"
+
+# Lamp v1.0 정적 호스팅 엔진
+# npm i -g wrangler && wrangler login 후: wrangler deploy
+# KV 네임스페이스는 `wrangler kv namespace create lamp_files` 로 만들고 id를 채운다.
+
+[[kv_namespaces]]
+binding = "LAMP_KV"
+id = "623e2ab5da254c248b4df29146bf1452"
+
+[vars]
+SUPABASE_URL = "https://foisgisqbyaykrlddvio.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_HyWOEZAtTR0r2lUYBjK6Sw_cn-yUdXD"
+PUBLIC_BASE = "https://lamp-edge.helpaboutflux.workers.dev"
+
+# 시크릿 (wrangler secret put 로 등록)
+#   wrangler secret put SECRET_SALT  -> 비밀번호 쿠키 서명 키
+#   wrangler secret put ADMIN_KEY    -> 운영/CI 배포용 관리자 키
+#   wrangler secret put GITHUB_TOKEN -> (선택) GitHub 가져오기 API 한도 상향

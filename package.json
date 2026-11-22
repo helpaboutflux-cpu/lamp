@@ -1,0 +1,11 @@
+{
+  "name": "lamp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lamp - 0원 웹 배포 플랫폼 (Cloudflare Workers + KV 정적 호스팅, 내장 IDE, SEO 진단, Forms, 분석)",
+  "scripts": {
+    "test:unit": "node tests/unit.test.mjs",
+    "deploy:edge": "python3 worker/deploy_worker.py"
+  }
+}

@@ -1,0 +1,5 @@
+tests/shots/
+tests/.qr.json
+tests/.server.log
+node_modules/
+.DS_Store
