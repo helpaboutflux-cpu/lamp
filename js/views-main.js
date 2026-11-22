@@ -312,7 +312,7 @@ export async function loginView() {
           msg('ok', noteBox('ok', esc(email) + ' 주소로 인증 코드를 보냈습니다.',
             '메일 본문에 적힌 숫자 코드를 아래에 입력해 주세요. 몇 분 안에 오지 않으면 스팸함을 확인해 주세요.'));
           codeEl.focus();
-          startCooldown(45);
+          startCooldown(60);
         } catch (err) {
           const limited = err.status === 429;
           msg('bad', noteBox('bad', limited ? '잠시 뒤 다시 시도해 주세요.' : '코드를 보내지 못했습니다.',
